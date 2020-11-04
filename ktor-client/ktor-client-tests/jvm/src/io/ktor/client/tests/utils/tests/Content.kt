@@ -39,6 +39,10 @@ internal fun Application.contentTestServer() {
                 val content = call.request.receiveChannel().toByteArray()
                 call.respond(content)
             }
+            post("/consume") {
+                call.request.receiveChannel().toByteArray()
+                call.respond(HttpStatusCode.OK)
+            }
             get("/news") {
                 val form = call.request.queryParameters
 

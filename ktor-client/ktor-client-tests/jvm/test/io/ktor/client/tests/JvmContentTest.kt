@@ -5,9 +5,12 @@
 package io.ktor.client.tests
 
 import io.ktor.client.*
+import io.ktor.client.features.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.client.tests.utils.*
+import io.ktor.http.content.*
+import kotlinx.coroutines.*
 import org.junit.*
 import java.io.*
 
@@ -29,6 +32,30 @@ class JvmContentTest : ClientLoader() {
                 }
 
                 assertArrayEquals("Test fail with size: $size", content, responseData)
+            }
+        }
+    }
+
+    @Test
+    fun testChannelWriterContentShouldNotTimeout(): Unit = clientTests {
+        config {
+            install(HttpTimeout) {
+                socketTimeoutMillis = 10_000
+                connectTimeoutMillis = 10_000
+            }
+        }
+        test { client ->
+            repeat(5000) {
+                val chunk = (0 until 10000).map { it.toByte() }.toByteArray()
+
+                client.post<String>("$TEST_SERVER/content/consume") {
+                    body = ChannelWriterContent(
+                        body = {
+                            writeFully(chunk, 0, chunk.size)
+                        },
+                        contentType = null,
+                    )
+                }
             }
         }
     }

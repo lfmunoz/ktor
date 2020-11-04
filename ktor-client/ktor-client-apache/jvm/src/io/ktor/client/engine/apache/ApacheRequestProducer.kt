@@ -37,7 +37,7 @@ internal class ApacheRequestProducer(
     private val request: HttpUriRequest = setupRequest()
     private val host = URIUtils.extractHost(request.uri)!!
 
-    private val ioControl: AtomicRef<IOControl?> = atomic(null)
+    private val interestController = InterestControllerHolder()
     private val currentBuffer: AtomicRef<ByteBuffer?> = atomic(null)
 
     init {
@@ -81,20 +81,18 @@ internal class ApacheRequestProducer(
         var buffer = currentBuffer.getAndSet(null) ?: requestChannel.poll()
 
         if (buffer == null) {
+            interestController.suspendOutput(ioctrl)
+
             @OptIn(ExperimentalCoroutinesApi::class)
             if (requestChannel.isClosedForReceive) {
                 encoder.complete()
                 return
             }
 
-            ioctrl.suspendOutput()
-
-            ioControl.value = ioctrl
             buffer = requestChannel.poll() ?: return
 
-            ioControl.value = null
             try {
-                ioctrl.requestOutput()
+                interestController.resumeOutputIfPossible()
             } catch (cause: Throwable) {
                 buffer.recycle()
                 throw cause
@@ -178,14 +176,14 @@ internal class ApacheRequestProducer(
                     throw cause
                 }
 
-                ioControl.getAndSet(null)?.requestOutput()
+                interestController.resumeOutputIfPossible()
             }
         }
 
         result.invokeOnCompletion { cause ->
             requestChannel.close(cause)
             if (cause != null) callContext.cancel()
-            ioControl.getAndSet(null)?.requestOutput()
+            interestController.resumeOutputIfPossible()
         }
 
         return result
